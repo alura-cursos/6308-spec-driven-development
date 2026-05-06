@@ -37,17 +37,17 @@ services:
     build: .
     container_name: api_app
     environment:
-      NODE_ENV: development
-      PORT: 3000
-      DATABASE_URL: postgresql://admin:admin123@postgres:5432/api_ecommerce?schema=public
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      JWT_ACCESS_SECRET: supersecret_access_key_dev
-      JWT_ACCESS_EXPIRATION: 1d
-      JWT_REFRESH_SECRET: supersecret_refresh_key_dev
-      JWT_REFRESH_EXPIRATION: 7d
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
     ports:
-      - "3000:3000"
+      - "${PORT}:${PORT}"
     depends_on:
       postgres:
         condition: service_healthy

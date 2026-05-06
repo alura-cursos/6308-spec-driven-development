@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "PowerShell(winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements)",
+      "Bash(wsl -d Ubuntu -- bash -c \"docker --version 2>/dev/null || echo 'Docker not installed'\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Administrador\\\\Documents\\\\Alura\\\\6308 - Spec Driven\\\\api_eccomerce\" -Recurse -Force)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "mcp__7e7ad987-09be-4f61-94e9-efa7c79a8162__getAuthenticatedUser",
+      "mcp__7e7ad987-09be-4f61-94e9-efa7c79a8162__getWorkspaces",
+      "mcp__7e7ad987-09be-4f61-94e9-efa7c79a8162__getCollections",
+      "mcp__7e7ad987-09be-4f61-94e9-efa7c79a8162__getCollection",
+      "mcp__7e7ad987-09be-4f61-94e9-efa7c79a8162__putCollection",
+      "mcp__7e7ad987-09be-4f61-94e9-efa7c79a8162__updateCollectionRequest",
+      "Bash(docker exec *)"
+    ]
+  }
+}
