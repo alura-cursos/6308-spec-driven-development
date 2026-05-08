@@ -16,7 +16,8 @@ O sistema foi projetado como um backend headless — não possui interface visua
 | Gestão de catálogo de produtos | CRUD de produtos e categorias com controle de estoque |
 | Carrinho de compras persistente | Armazenamento em Redis com TTL de 30 dias |
 | Conflitos de estoque em compras simultâneas | Transação atômica no checkout com decremento de estoque |
-| Rastreamento de pedidos | Modelo Order com status e histórico de itens |
+| Rastreamento de pedidos | Modelo Order com ciclo de vida: PENDING → PAID → PACKING → SHIPPED → DELIVERED |
+| Restauração de estoque no cancelamento | Estoque restaurado atomicamente ao cancelar pedidos PENDING ou PAID |
 | Controle de pagamentos | Fluxo AWAITING_CONFIRMATION → PAID/CANCELED com idempotência |
 | Dados desatualizados em catálogo | Cache Redis na listagem de produtos (TTL 60s) |
 | Preço congelado no momento da compra | Snapshot de preço salvo em `OrderItem.price` |
@@ -58,14 +59,15 @@ Usuário autenticado seleciona um produto e quantidade
 ### Fluxo 4 — Checkout (Criação de Pedido)
 
 ```
-Usuário autenticado solicita checkout
+Usuário autenticado solicita checkout (com endereço de entrega no payload)
   → Sistema carrega carrinho do Redis
   → Valida: carrinho não vazio, produtos existem, estoque suficiente, produtos ACTIVE
   → Transação atômica:
      a. Decrementa estoque de todos os produtos
      b. Cria Order com status PENDING
      c. Cria OrderItems com snapshot de preço e quantidade
-     d. Cria Payment com status AWAITING_CONFIRMATION
+     d. Cria OrderAddress com endereço de entrega
+     e. Cria Payment com status AWAITING_CONFIRMATION
   → Carrinho é apagado do Redis
   → Pedido retornado ao usuário
 ```
@@ -73,7 +75,7 @@ Usuário autenticado solicita checkout
 ### Fluxo 5 — Confirmação de Pagamento
 
 ```
-Sistema (ou integração externa) envia confirmação com Idempotency-Key
+Frontend envia confirmação com Idempotency-Key
   → Sistema busca Payment por ID
   → Se já confirmado (PAID), retorna o payment existente (idempotência)
   → Transação atômica:
@@ -85,14 +87,34 @@ Sistema (ou integração externa) envia confirmação com Idempotency-Key
 ### Fluxo 6 — Cancelamento
 
 ```
-Usuário ou sistema solicita cancelamento do pagamento
+Usuário ou ADMIN solicita cancelamento
+  → Valida: Order.status deve ser PENDING ou PAID
+  → Se PACKING, SHIPPED ou DELIVERED: retorna erro (cancelamento bloqueado)
   → Transação atômica:
      a. Payment.status → CANCELED
      b. Order.status → CANCELED
+     c. Restaura estoque de todos os OrderItems
   → Confirmação retornada
 ```
 
-### Fluxo 7 — Gestão Administrativa
+### Fluxo 7 — Avanço de Status Logístico (ADMIN)
+
+```
+ADMIN avança o status do pedido
+  → PAID → PACKING: pedido entra em separação
+  → PACKING → SHIPPED: pedido enviado ao cliente
+  → Transições fora dessa sequência são bloqueadas
+```
+
+### Fluxo 8 — Confirmação de Recebimento (Usuário)
+
+```
+Usuário confirma que recebeu o pedido
+  → Valida: Order.status deve ser SHIPPED
+  → Order.status → DELIVERED
+```
+
+### Fluxo 9 — Gestão Administrativa
 
 ```
 Usuário ADMIN acessa o sistema

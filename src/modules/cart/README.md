@@ -32,13 +32,13 @@ Persistir e manipular o carrinho de compras de cada usuário no Redis, validando
 }
 ```
 
-Chave Redis: `cart:{tenantId}:{userId}` (padrão: `cart:default:{userId}`)
+Chave Redis: `cart:{userId}`
 TTL: 30 dias (renovado a cada operação de escrita)
 
 ### Adição de Item
 
 - Se o produto já existe no carrinho, a quantidade é **somada** (não substituída)
-- Valida que o produto existe no banco e está ativo
+- Valida que o produto existe no banco e está `ACTIVE`
 - Valida que há estoque suficiente para a quantidade total no carrinho
 - O preço é capturado do banco no momento da adição (snapshot parcial — pode mudar até o checkout)
 - Total é recalculado após cada operação
@@ -46,6 +46,14 @@ TTL: 30 dias (renovado a cada operação de escrita)
 ### Remoção de Item
 
 O parâmetro `:itemId` na rota é na prática o `productId`. Remove o item completo, independente da quantidade.
+
+## Regras de Negócio
+
+- Apenas usuários autenticados podem acessar o carrinho
+- Cada usuário tem seu próprio carrinho isolado — o `userId` vem exclusivamente de `req.user.sub` (JWT), nunca de query param ou body
+- Produto `INACTIVE` não pode ser adicionado ao carrinho
+- O preço snapshot no carrinho é indicativo; o snapshot definitivo ocorre em `OrderItem` no checkout
+- O carrinho é destruído após checkout bem-sucedido
 
 ## Dependências Internas
 
@@ -56,10 +64,6 @@ O parâmetro `:itemId` na rota é na prática o `productId`. Remove o item compl
 | `config/logger` | Logging |
 | `utils/AppError` | Erros operacionais |
 | `middlewares/authMiddleware` | Autenticação obrigatória |
-
-## Dependências Externas
-
-Nenhuma dependência externa específica.
 
 ## Módulos Relacionados
 
@@ -80,8 +84,8 @@ GET /api/v1/cart
   → authMiddleware
   → cartController.getCart()
     → userId = req.user.sub
-  → cartService.getCart(userId, tenantId)
-    → redis.get(`cart:default:${userId}`)
+  → cartService.getCart(userId)
+    → redis.get(`cart:${userId}`)
     → se vazio: retorna { items: [], total: 0 }
   → 200 { data: cart }
 ```
@@ -91,13 +95,13 @@ GET /api/v1/cart
 POST /api/v1/cart/items
   → authMiddleware
   → cartController.addItem()
-  → cartService.addItem(userId, { productId, quantity }, tenantId)
-    → productRepository.findById(productId) → valida existência e estoque
+  → cartService.addItem(userId, { productId, quantity })
+    → productRepository.findById(productId) → valida existência, status ACTIVE e estoque
     → cartService.getCart() → carrega estado atual
     → se productId já existe em items: soma quantity
     → senão: insere novo item
     → recalcula total
-    → redis.set(key, cart, { EX: 30 dias })
+    → redis.set(`cart:${userId}`, cart, { EX: 30 dias })
   → 200 { data: cart }
 ```
 
@@ -106,11 +110,11 @@ POST /api/v1/cart/items
 DELETE /api/v1/cart/items/:itemId
   → authMiddleware
   → cartController.removeItem()
-  → cartService.removeItem(userId, itemId, tenantId)
+  → cartService.removeItem(userId, itemId)
     → cartService.getCart()
     → filtra items removendo o productId === itemId
     → recalcula total
-    → redis.set(key, cart)
+    → redis.set(`cart:${userId}`, cart)
   → 200 { data: cart }
 ```
 
@@ -122,11 +126,10 @@ DELETE /api/v1/cart/items/:itemId
 | `cartController.js` | Orquestra request e delegação ao service |
 | `cartRoutes.js` | Define rotas com authMiddleware |
 
-## Observações Técnicas e Débitos
+## Gaps e Débitos
 
-- **Sem Repository separado**: Diferente dos outros módulos, o `cartService` acessa Redis e Prisma diretamente, sem um `cartRepository.js`. Isso viola a separação de camadas estabelecida nos demais módulos.
-- **itemId = productId**: O parâmetro da rota DELETE é chamado `itemId` mas na prática é o `productId`. Isso pode ser confuso para consumidores da API.
-- **Preço no carrinho vs. preço no pedido**: O preço é capturado no momento de adicionar ao carrinho mas pode mudar até o checkout. O snapshot definitivo de preço ocorre em `OrderItem`, não no carrinho.
-- **Race condition de estoque**: A validação de estoque no `addItem` é feita com uma leitura simples. Sob alta concorrência, dois usuários podem adicionar o último item disponível ao carrinho simultaneamente.
-- **Sem coupon/desconto**: O cálculo de total é simples (soma de price * quantity). Não há suporte a cupons ou descontos no carrinho.
-- **Fallback de userId via query param**: O `cartController.getCart()` tem um fallback para `req.query.userId` além de `req.user.sub`. Isso pode ser um risco de segurança se um usuário informar o ID de outro.
+- **Sem Repository separado**: O `cartService` acessa Redis e Prisma diretamente, sem um `cartRepository.js`. Viola a separação de camadas dos demais módulos.
+- **itemId = productId**: O parâmetro da rota DELETE é chamado `itemId` mas na prática é o `productId`. Pode confundir consumidores da API.
+- **Race condition de estoque**: A validação de estoque no `addItem` é uma leitura simples. Sob alta concorrência, dois usuários podem adicionar o último item disponível simultaneamente.
+- **Fallback inseguro de userId**: O `cartController` não deve aceitar `req.query.userId` como fallback — o `userId` deve vir exclusivamente de `req.user.sub`.
+- **Sem coupon/desconto**: Cálculo de total é simples (price × quantity). Não há suporte a cupons.

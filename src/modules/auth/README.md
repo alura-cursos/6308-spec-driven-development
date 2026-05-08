@@ -18,7 +18,7 @@ Autenticar usuários e fornecer tokens de acesso (access token) e renovação (r
 ### Registro (`register`)
 - Valida unicidade de email
 - Faz hash da senha com bcrypt (salt rounds: 10)
-- Cria usuário com role padrão `USER`
+- Cria usuário com role padrão `USER` — role nunca pode ser definida pelo payload de registro
 - Gera `accessToken` (JWT, expira em `JWT_ACCESS_EXPIRATION`) e `refreshToken` (expira em `JWT_REFRESH_EXPIRATION`)
 - Armazena o refreshToken no Redis com TTL de 7 dias
 - Retorna `{ user, tokens }` com status 201
@@ -68,7 +68,7 @@ POST /api/v1/auth/register
   → authService.register()
     → userRepository.findByEmail() — valida email único
     → bcrypt.hash(password, 10)
-    → userRepository.create()
+    → userRepository.create({ role: 'USER' }) — role sempre USER, ignorar payload
     → generateAccessToken(userId, role)
     → generateRefreshToken(userId)
     → redis.set(`refresh:${userId}`, refreshToken, TTL: 7d)
@@ -97,9 +97,10 @@ POST /api/v1/auth/login
 | `authValidators.js` | Regras de validação de payload (express-validator) |
 | `authRoutes.js` | Mapeamento de rotas e aplicação de validators |
 
-## Observações Técnicas e Débitos
+## Gaps e Débitos
 
 - **Sem refresh token endpoint**: Não há `POST /auth/refresh` implementado. O refreshToken é armazenado no Redis mas nunca é consumido para renovar o access token.
 - **Sem logout endpoint**: Não há `POST /auth/logout` que invalide o refreshToken no Redis.
-- **Validação de senha mínima**: Apenas valida `>= 6 caracteres`. Sem regras de complexidade (maiúscula, número, símbolo).
-- **Role no registro**: A API aceita `role` no body do registro, o que pode permitir que um usuário se registre como ADMIN. Verificar se há bloqueio desta operação.
+- **Sem recuperação de senha**: Fluxo de "esqueci minha senha" não está definido no escopo atual. [A DEFINIR]
+- **Validação de senha mínima**: Apenas valida `>= 6 caracteres`. Sem regras de complexidade.
+- **Role no registro**: Garantir que o campo `role` do body seja ignorado na criação — usuário sempre nasce como `USER`.

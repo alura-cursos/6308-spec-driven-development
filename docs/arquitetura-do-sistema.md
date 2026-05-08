@@ -103,7 +103,7 @@ Usado em: criação de pedido (decremento de estoque + criação de order + paym
 3. **Validação dupla** — Validators com `express-validator` validam a estrutura do payload; services validam as regras de negócio.
 4. **Nenhuma query direta em controllers** — Controllers só interagem com services.
 5. **Erros operacionais via AppError** — Toda falha esperada deve usar `AppError(message, statusCode, code)`. Erros inesperados caem no catch genérico do `errorHandler`.
-6. **Carrinho em Redis** — O carrinho nunca persiste em banco relacional. Chave: `cart:{tenantId}:{userId}`.
+6. **Carrinho em Redis** — O carrinho nunca persiste em banco relacional. Chave: `cart:{userId}`.
 7. **Snapshot de preço** — Ao criar `OrderItem`, o preço do produto é copiado e congelado. Alterações de preço futuras não afetam pedidos existentes.
 
 ---
@@ -221,9 +221,13 @@ O cache de produtos (`products:list:*`) tem TTL de 60 segundos mas não é inval
 
 Tanto `orderService` quanto `cartService` consultam `productRepository` para validar existência e estoque. Qualquer mudança no model Product afeta esses dois módulos.
 
-### Acoplamento: Multi-tenancy parcial
+### Gap: Endereço de Entrega ausente no modelo
 
-Os campos `tenantId` existem nas entidades mas não há filtro automático por tenant nas queries. O isolamento entre tenants depende de chamadas explícitas, que não estão implementadas consistentemente.
+O modelo `Order` não possui endereço de entrega. É necessário criar uma entidade `OrderAddress` (1:1 com Order) para armazenar os dados de entrega informados no checkout.
+
+### Gap: Relação Produto-Categoria
+
+O modelo atual de produto-categoria precisa suportar N:N — um produto pode pertencer a múltiplas categorias. Verificar se o schema Prisma atual implementa isso corretamente ou usa 1:N.
 
 ---
 

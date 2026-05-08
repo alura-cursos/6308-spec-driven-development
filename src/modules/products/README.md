@@ -2,11 +2,11 @@
 
 ## Objetivo
 
-Gerenciar o catálogo de produtos da loja: criação, listagem, busca, atualização e remoção.
+Gerenciar o catálogo de produtos da loja: criação, listagem, busca, atualização e desativação.
 
 ## Responsabilidade Principal
 
-Fornecer acesso ao catálogo de produtos com suporte a paginação, filtros, busca textual e cache. Operações de escrita são restritas a ADMINs.
+Fornecer acesso ao catálogo de produtos com suporte a paginação, filtros, busca textual e cache. Operações de escrita são restritas a ADMINs. Produtos desativados somem imediatamente do catálogo público.
 
 ## Funcionalidades Existentes
 
@@ -29,21 +29,23 @@ Query params suportados:
 | `categoryId` | string | Filtrar por categoria |
 | `search` | string | Busca por nome ou descrição (case-insensitive) |
 
-Filtros fixos: apenas produtos com `status === ACTIVE` são retornados.
+Filtros fixos: apenas produtos com `status === ACTIVE` são retornados para usuários não-autenticados e usuários com role `USER`.
 
 Response inclui objeto `pagination`: `{ page, limit, totalItems, totalPages }`.
 
 ### Cache Redis
 
-A listagem utiliza cache-aside com chave `products:list:{JSON.stringify(params)}` e TTL de 60 segundos.
+A listagem utiliza cache-aside com chave `products:list:{JSON.stringify(params)}` e TTL de 60 segundos. O cache deve ser **invalidado** após criação, atualização ou desativação de produto.
 
-**Débito**: O cache não é invalidado quando produtos são criados ou editados.
+## Regras de Negócio
 
-### Criação/Atualização
-
-- `sku` deve ser único no sistema (validação no service)
-- `categoryId` deve referenciar uma categoria existente
-- `status` padrão é `ACTIVE`
+- Apenas `ADMIN` pode criar, editar e desativar produtos
+- Produto desativado (`status: INACTIVE`) **some imediatamente** do catálogo público — o filtro `status === ACTIVE` é aplicado em todas as listagens públicas
+- Um produto pode pertencer a **múltiplas categorias** (relação N:N)
+- `sku` deve ser único no sistema
+- `categoryId` (ou lista de categorias) deve referenciar categorias existentes
+- Produtos não devem ser deletados fisicamente se possuem `OrderItem` associados — usar `status: INACTIVE` como soft delete
+- O preço do produto pode ser alterado livremente, mas alterações não afetam pedidos já criados (o preço é snapshot em `OrderItem.price`)
 
 ## Dependências Internas
 
@@ -55,15 +57,11 @@ A listagem utiliza cache-aside com chave `products:list:{JSON.stringify(params)}
 | `utils/AppError` | Erros operacionais |
 | `middlewares/authMiddleware` | Proteção de rotas de escrita |
 
-## Dependências Externas
-
-Nenhuma dependência externa específica deste módulo.
-
 ## Módulos Relacionados
 
-- **categories**: Produto referencia `categoryId` de Category
-- **cart**: `cartService` consulta `productRepository` para validar estoque
-- **orders**: `orderService` valida produtos e preços via `productRepository`
+- **categories**: Produto possui relação N:N com Category
+- **cart**: `cartService` consulta `productRepository` para validar existência, status e estoque
+- **orders**: `orderService` valida produtos via `productRepository` no checkout
 
 ## Pontos de Entrada
 
@@ -93,7 +91,9 @@ POST /api/v1/products
   → productController.create()
   → productService.createProduct(body)
     → productRepository.findBySku(sku) → se existe, AppError(409, CONFLICT)
+    → SE categoryIds informados: valida existência de cada categoria
     → productRepository.create(data)
+    → invalida cache: redis.del(`products:list:*`)
   → 201 { data: product }
 ```
 
@@ -104,9 +104,21 @@ PUT /api/v1/products/:id
   → productController.update()
   → productService.updateProduct(id, body)
     → productRepository.findById(id) → valida existência
-    → se body.sku e sku diferente: validar unicidade
+    → SE body.sku diferente: valida unicidade
     → productRepository.update(id, data)
+    → invalida cache: redis.del(`products:list:*`)
   → 200 { data: product }
+```
+
+### Desativar Produto (soft delete via status)
+```
+DELETE /api/v1/products/:id
+  → authMiddleware → verificar ADMIN
+  → productService.deleteProduct(id)
+    → SE produto tem OrderItems: productRepository.update({ status: INACTIVE })
+    → SE produto não tem OrderItems: productRepository.delete(id)
+    → invalida cache: redis.del(`products:list:*`)
+  → 204
 ```
 
 ## Arquivos Críticos
@@ -116,9 +128,13 @@ PUT /api/v1/products/:id
 | `productService.js` | Lógica de negócio, validação de SKU, integração de cache |
 | `productRepository.js` | Queries Prisma com filtros e paginação |
 
-## Observações Técnicas e Débitos
+## Gaps e Débitos
 
 - **Cache sem invalidação**: Criar ou editar produtos não limpa o cache de listagem. Dados podem ficar desatualizados por até 60 segundos.
-- **Soft delete ausente**: `DELETE` remove o produto fisicamente. Se houver `OrderItem` referenciando, haverá erro de FK (P2003). Considerar `status = INACTIVE` como soft delete.
-- **Sem validação de categoryId**: O service não verifica se o `categoryId` informado existe antes de criar o produto. O erro viria do banco como P2025.
+- **Relação N:N com categorias não implementada**: O schema atual provavelmente usa `categoryId` único por produto (1:N). Precisa migrar para uma tabela `ProductCategory` (N:N).
+- **Delete físico sem verificação de OrderItems**: O `DELETE` atual remove fisicamente. Se houver `OrderItem` referenciando, causará erro de FK. Implementar soft delete com `status: INACTIVE` quando há pedidos associados.
+- **Sem validação de categoryId no create**: O service não verifica se as categorias informadas existem antes de criar. O erro viria do banco.
 - **Sem cache individual**: Apenas a listagem é cacheada. O `GET /products/:id` sempre vai ao banco.
+- **[A DEFINIR]** Campos adicionais: SKU obrigatório ou opcional, peso, dimensões para cálculo de frete.
+- **[A DEFINIR]** Variações de produto (tamanho, cor) com estoque individual por variação.
+- **[A DEFINIR]** Imagens de produto: URLs externas ou upload gerenciado pela API.
