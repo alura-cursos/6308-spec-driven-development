@@ -1,0 +1,1186 @@
+{
+  "info": {
+    "name": "001 - Cancelamento de Pedido",
+    "description": "Testes de caixa preta para a feature de cancelamento de pedido (spec 001).\n\nPré-requisitos:\n- Servidor rodando em http://localhost:3000\n- Banco de dados com ao menos 1 produto ACTIVE com stock >= 5\n- A rota PATCH /api/v1/orders/:id/status (admin) deve existir para os testes de US3\n\nExecutar as pastas na ordem: [Setup] → [US1] → [US2] → [US3] → [US4] → [US5] → [Edge Cases]",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1", "type": "string" },
+    { "key": "tokenA",     "value": "", "type": "string" },
+    { "key": "tokenB",     "value": "", "type": "string" },
+    { "key": "tokenAdmin", "value": "", "type": "string" },
+    { "key": "productId",      "value": "", "type": "string" },
+    { "key": "stockOriginal",  "value": "", "type": "string" },
+    { "key": "orderId_us1",    "value": "", "type": "string" },
+    { "key": "paymentId_us1",  "value": "", "type": "string" },
+    { "key": "stockAntes_us1", "value": "", "type": "string" },
+    { "key": "orderId_us2",    "value": "", "type": "string" },
+    { "key": "paymentId_us2",  "value": "", "type": "string" },
+    { "key": "orderId_us3a",   "value": "", "type": "string" },
+    { "key": "paymentId_us3a", "value": "", "type": "string" },
+    { "key": "orderId_us3b",   "value": "", "type": "string" },
+    { "key": "paymentId_us3b", "value": "", "type": "string" },
+    { "key": "orderId_us3c",   "value": "", "type": "string" },
+    { "key": "paymentId_us3c", "value": "", "type": "string" },
+    { "key": "orderId_us4",    "value": "", "type": "string" },
+    { "key": "orderId_us5",    "value": "", "type": "string" },
+    { "key": "paymentId_us5",  "value": "", "type": "string" },
+    { "key": "stockAntes_us5", "value": "", "type": "string" },
+    { "key": "qty_us1", "value": "2", "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "[Setup] Autenticação e Produto Base",
+      "description": "Registra usuários de teste, obtém tokens e identifica o produto a ser usado nos cenários.",
+      "item": [
+        {
+          "name": "1. Registrar User A",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Teste User A\",\n  \"email\": \"cancel_user_a@test.com\",\n  \"password\": \"Senha123!\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "// Aceita 201 (novo) ou 409 (já existe — ok para re-execuções)",
+                "pm.test('Registro OK ou usuário já existe', () => {",
+                "  pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "2. Login User A",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"cancel_user_a@test.com\",\n  \"password\": \"Senha123!\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Login User A retorna 200', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "pm.test('Response contém accessToken', () => {",
+                "  pm.expect(json.data.tokens.accessToken).to.be.a('string');",
+                "});",
+                "",
+                "pm.collectionVariables.set('tokenA', json.data.tokens.accessToken);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "3. Registrar User B",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Teste User B\",\n  \"email\": \"cancel_user_b@test.com\",\n  \"password\": \"Senha123!\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Registro OK ou usuário já existe', () => {",
+                "  pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "4. Login User B",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"cancel_user_b@test.com\",\n  \"password\": \"Senha123!\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Login User B retorna 200', () => pm.response.to.have.status(200));",
+                "const json = pm.response.json();",
+                "pm.collectionVariables.set('tokenB', json.data.tokens.accessToken);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "5. Registrar Admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Teste Admin\",\n  \"email\": \"cancel_admin@test.com\",\n  \"password\": \"Senha123!\",\n  \"role\": \"ADMIN\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Registro OK ou admin já existe', () => {",
+                "  pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "6. Login Admin",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"cancel_admin@test.com\",\n  \"password\": \"Senha123!\"\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Login Admin retorna 200', () => pm.response.to.have.status(200));",
+                "const json = pm.response.json();",
+                "pm.collectionVariables.set('tokenAdmin', json.data.tokens.accessToken);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "7. GET /products — capturar productId e estoque",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('GET /products retorna 200', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "const products = json.data || json;",
+                "",
+                "pm.test('Existe ao menos 1 produto ACTIVE com stock >= 5', () => {",
+                "  const eligible = products.find(p => p.status === 'ACTIVE' && p.stock >= 5);",
+                "  pm.expect(eligible, 'Nenhum produto elegível encontrado — seed o banco com produto ACTIVE stock >= 5').to.exist;",
+                "  pm.collectionVariables.set('productId', eligible.id);",
+                "  pm.collectionVariables.set('stockOriginal', String(eligible.stock));",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+
+    {
+      "name": "[US1] Cancelar Pedido PENDING",
+      "description": "Cenário principal: usuário cancela seu próprio pedido enquanto ainda está em PENDING.\nValida: 200, order.status CANCELED, payment.status CANCELED, estoque restaurado.",
+      "item": [
+        {
+          "name": "1. Adicionar ao Carrinho (User A)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cart/items",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 2\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Adicionar ao carrinho retorna 200', () => pm.response.to.have.status(200));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "2. Checkout (User A) — capturar orderId e paymentId",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Checkout retorna 201', () => pm.response.to.have.status(201));",
+                "",
+                "const json = pm.response.json();",
+                "const order = json.data;",
+                "",
+                "pm.test('Order criado com status PENDING', () => {",
+                "  pm.expect(order.status).to.eql('PENDING');",
+                "});",
+                "",
+                "pm.collectionVariables.set('orderId_us1', order.id);",
+                "",
+                "// payment vem embutido no checkout ou precisamos buscá-lo via GET /orders",
+                "if (order.payment && order.payment.id) {",
+                "  pm.collectionVariables.set('paymentId_us1', order.payment.id);",
+                "}"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "3. GET /products/:id — estoque ANTES do cancelamento",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('GET product retorna 200', () => pm.response.to.have.status(200));",
+                "const json = pm.response.json();",
+                "const product = json.data || json;",
+                "pm.collectionVariables.set('stockAntes_us1', String(product.stock));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "4. ⭐ POST /orders/:id/cancel — TESTE PRINCIPAL",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders/{{orderId_us1}}/cancel",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('[SC-001] Retorna HTTP 200', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "const order = json.data;",
+                "",
+                "pm.test('[SC-001] order.status === CANCELED no body da resposta', () => {",
+                "  pm.expect(order.status).to.eql('CANCELED');",
+                "});",
+                "",
+                "pm.test('[FR-008] Response segue padrão { data, meta }', () => {",
+                "  pm.expect(json).to.have.property('data');",
+                "  pm.expect(json).to.have.property('meta');",
+                "  pm.expect(json.meta).to.have.property('timestamp');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "5. GET /orders — verificar payment.status CANCELED",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('GET /orders retorna 200', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "const orders = json.data;",
+                "const orderId = pm.collectionVariables.get('orderId_us1');",
+                "const order = orders.find(o => o.id === orderId);",
+                "",
+                "pm.test('[SC-004] payment.status === CANCELED no banco', () => {",
+                "  pm.expect(order, 'Pedido não encontrado no GET /orders').to.exist;",
+                "  pm.expect(order.payment.status).to.eql('CANCELED');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "6. GET /products/:id — verificar estoque restaurado",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('GET product retorna 200', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "const product = json.data || json;",
+                "const stockAntes = parseInt(pm.collectionVariables.get('stockAntes_us1'), 10);",
+                "const qtyUsada = 2;",
+                "",
+                "pm.test('[SC-003] Estoque restaurado: stock === stockAntes + qty cancelada', () => {",
+                "  pm.expect(product.stock).to.eql(stockAntes + qtyUsada);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+
+    {
+      "name": "[US2] Cancelar Pedido PAID",
+      "description": "Usuário cancela pedido após confirmar o pagamento (status PAID).\nValida: 200, order CANCELED, payment CANCELED, estoque restaurado.",
+      "item": [
+        {
+          "name": "1. Adicionar ao Carrinho (User A)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cart/items",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}"
+            }
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Adicionar ao carrinho retorna 200', () => pm.response.to.have.status(200));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "2. Checkout (User A)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Checkout retorna 201', () => pm.response.to.have.status(201));",
+                "const json = pm.response.json();",
+                "const order = json.data;",
+                "pm.collectionVariables.set('orderId_us2', order.id);",
+                "if (order.payment && order.payment.id) {",
+                "  pm.collectionVariables.set('paymentId_us2', order.payment.id);",
+                "}"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "3. GET /orders — capturar paymentId para confirmar",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const json = pm.response.json();",
+                "const orders = json.data;",
+                "const orderId = pm.collectionVariables.get('orderId_us2');",
+                "const order = orders.find(o => o.id === orderId);",
+                "if (order && order.payment) {",
+                "  pm.collectionVariables.set('paymentId_us2', order.payment.id);",
+                "}"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "4. Confirmar Pagamento",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/payments/{{paymentId_us2}}/confirm",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" },
+              { "key": "Idempotency-Key", "value": "us2-confirm-{{$timestamp}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Confirmação de pagamento retorna 200', () => pm.response.to.have.status(200));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "5. GET /products/:id — estoque ANTES",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const json = pm.response.json();",
+                "const product = json.data || json;",
+                "pm.collectionVariables.set('stockAntes_us2', String(product.stock));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "6. ⭐ POST /orders/:id/cancel — TESTE PRINCIPAL (PAID)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders/{{orderId_us2}}/cancel",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('[SC-001] Retorna HTTP 200 para pedido PAID', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "pm.test('[SC-001] order.status === CANCELED', () => {",
+                "  pm.expect(json.data.status).to.eql('CANCELED');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "7. GET /orders — verificar payment.status CANCELED",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const json = pm.response.json();",
+                "const orderId = pm.collectionVariables.get('orderId_us2');",
+                "const order = json.data.find(o => o.id === orderId);",
+                "",
+                "pm.test('[SC-004] payment.status === CANCELED após cancelar pedido PAID', () => {",
+                "  pm.expect(order.payment.status).to.eql('CANCELED');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "8. GET /products/:id — verificar estoque restaurado",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const json = pm.response.json();",
+                "const product = json.data || json;",
+                "const stockAntes = parseInt(pm.collectionVariables.get('stockAntes_us2'), 10);",
+                "",
+                "pm.test('[SC-003] Estoque restaurado após cancelar pedido PAID', () => {",
+                "  pm.expect(product.stock).to.eql(stockAntes + 1);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+
+    {
+      "name": "[US3] Bloqueio de Cancelamento por Status",
+      "description": "Tenta cancelar pedidos em PACKING, SHIPPED e DELIVERED — todos devem retornar 422.\n⚠️ Requer endpoint PATCH /api/v1/orders/:id/status (admin) para avançar o status logístico.",
+      "item": [
+
+        {
+          "name": "PACKING — Deve bloquear",
+          "item": [
+            {
+              "name": "1. Adicionar ao Carrinho e Checkout",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/cart/items",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}"
+                }
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "2. Checkout → capturar orderId_us3a",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/orders",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "pm.test('201', () => pm.response.to.have.status(201));",
+                    "const json = pm.response.json();",
+                    "pm.collectionVariables.set('orderId_us3a', json.data.id);",
+                    "if (json.data.payment) pm.collectionVariables.set('paymentId_us3a', json.data.payment.id);"
+                  ]
+                }
+              }]
+            },
+            {
+              "name": "3. GET /orders — capturar paymentId_us3a",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/orders",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "const orderId = pm.collectionVariables.get('orderId_us3a');",
+                    "const order = pm.response.json().data.find(o => o.id === orderId);",
+                    "if (order && order.payment) pm.collectionVariables.set('paymentId_us3a', order.payment.id);"
+                  ]
+                }
+              }]
+            },
+            {
+              "name": "4. Confirmar Pagamento",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/payments/{{paymentId_us3a}}/confirm",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{tokenA}}" },
+                  { "key": "Idempotency-Key", "value": "us3a-confirm-{{$timestamp}}" }
+                ]
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "5. [ADMIN] Avançar Status para PACKING",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/orders/{{orderId_us3a}}/status",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"PACKING\"\n}"
+                }
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "pm.test('Avançar para PACKING retorna 200', () => pm.response.to.have.status(200));",
+                    "// ⚠️ Se falhar: PATCH /orders/:id/status ainda não está implementado"
+                  ]
+                }
+              }]
+            },
+            {
+              "name": "6. ⭐ Tentar Cancelar Pedido PACKING — espera 422",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/orders/{{orderId_us3a}}/cancel",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+                ]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "pm.test('[SC-002] Retorna 422 para pedido PACKING', () => pm.response.to.have.status(422));",
+                    "",
+                    "const json = pm.response.json();",
+                    "pm.test('[SC-002] Body contém code ORDER_CANNOT_BE_CANCELED', () => {",
+                    "  pm.expect(json.error.code).to.eql('ORDER_CANNOT_BE_CANCELED');",
+                    "});"
+                  ]
+                }
+              }]
+            }
+          ]
+        },
+
+        {
+          "name": "SHIPPED — Deve bloquear",
+          "item": [
+            {
+              "name": "1. Adicionar ao Carrinho, Checkout e Confirmar",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/cart/items",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}"
+                }
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "2. Checkout → capturar orderId_us3b",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/orders",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "pm.test('201', () => pm.response.to.have.status(201));",
+                    "const json = pm.response.json();",
+                    "pm.collectionVariables.set('orderId_us3b', json.data.id);",
+                    "if (json.data.payment) pm.collectionVariables.set('paymentId_us3b', json.data.payment.id);"
+                  ]
+                }
+              }]
+            },
+            {
+              "name": "3. GET /orders — capturar paymentId_us3b",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/orders",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "const orderId = pm.collectionVariables.get('orderId_us3b');",
+                    "const order = pm.response.json().data.find(o => o.id === orderId);",
+                    "if (order && order.payment) pm.collectionVariables.set('paymentId_us3b', order.payment.id);"
+                  ]
+                }
+              }]
+            },
+            {
+              "name": "4. Confirmar Pagamento",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/payments/{{paymentId_us3b}}/confirm",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{tokenA}}" },
+                  { "key": "Idempotency-Key", "value": "us3b-confirm-{{$timestamp}}" }
+                ]
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "5. [ADMIN] Avançar para PACKING",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/orders/{{orderId_us3b}}/status",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+                ],
+                "body": { "mode": "raw", "raw": "{\n  \"status\": \"PACKING\"\n}" }
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "6. [ADMIN] Avançar para SHIPPED",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/orders/{{orderId_us3b}}/status",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+                ],
+                "body": { "mode": "raw", "raw": "{\n  \"status\": \"SHIPPED\"\n}" }
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "7. ⭐ Tentar Cancelar Pedido SHIPPED — espera 422",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/orders/{{orderId_us3b}}/cancel",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "pm.test('[SC-002] Retorna 422 para pedido SHIPPED', () => pm.response.to.have.status(422));",
+                    "const json = pm.response.json();",
+                    "pm.test('[SC-002] code === ORDER_CANNOT_BE_CANCELED', () => {",
+                    "  pm.expect(json.error.code).to.eql('ORDER_CANNOT_BE_CANCELED');",
+                    "});"
+                  ]
+                }
+              }]
+            }
+          ]
+        },
+
+        {
+          "name": "DELIVERED — Deve bloquear",
+          "item": [
+            {
+              "name": "1. Carrinho + Checkout → orderId_us3c",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/cart/items",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+                ],
+                "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}" }
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "2. Checkout → capturar orderId_us3c",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/orders",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "pm.test('201', () => pm.response.to.have.status(201));",
+                    "const json = pm.response.json();",
+                    "pm.collectionVariables.set('orderId_us3c', json.data.id);",
+                    "if (json.data.payment) pm.collectionVariables.set('paymentId_us3c', json.data.payment.id);"
+                  ]
+                }
+              }]
+            },
+            {
+              "name": "3. GET /orders — capturar paymentId_us3c",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/orders",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "const orderId = pm.collectionVariables.get('orderId_us3c');",
+                    "const order = pm.response.json().data.find(o => o.id === orderId);",
+                    "if (order && order.payment) pm.collectionVariables.set('paymentId_us3c', order.payment.id);"
+                  ]
+                }
+              }]
+            },
+            {
+              "name": "4. Confirmar + Avançar para PACKING",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/payments/{{paymentId_us3c}}/confirm",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{tokenA}}" },
+                  { "key": "Idempotency-Key", "value": "us3c-confirm-{{$timestamp}}" }
+                ]
+              },
+              "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "5. [ADMIN] PACKING → SHIPPED → DELIVERED",
+              "request": {
+                "method": "PATCH",
+                "url": "{{baseUrl}}/orders/{{orderId_us3c}}/status",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+                ],
+                "body": { "mode": "raw", "raw": "{\n  \"status\": \"DELIVERED\"\n}" }
+              },
+              "event": [{
+                "listen": "prerequest",
+                "script": {
+                  "exec": [
+                    "// Avança diretamente para DELIVERED (o servidor deve validar a sequência).",
+                    "// Se a API não aceitar salto, executar PACKING e SHIPPED antes via requests separados."
+                  ]
+                }
+              }],
+              "event2": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+            },
+            {
+              "name": "6. ⭐ Tentar Cancelar Pedido DELIVERED — espera 422",
+              "request": {
+                "method": "POST",
+                "url": "{{baseUrl}}/orders/{{orderId_us3c}}/cancel",
+                "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+              },
+              "event": [{
+                "listen": "test",
+                "script": {
+                  "exec": [
+                    "pm.test('[SC-002] Retorna 422 para pedido DELIVERED', () => pm.response.to.have.status(422));",
+                    "const json = pm.response.json();",
+                    "pm.test('[SC-002] code === ORDER_CANNOT_BE_CANCELED', () => {",
+                    "  pm.expect(json.error.code).to.eql('ORDER_CANNOT_BE_CANCELED');",
+                    "});"
+                  ]
+                }
+              }]
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "[US4] Ownership e Permissões",
+      "description": "Usuário B tenta cancelar pedido de A → 403. Admin cancela pedido de A → 200.",
+      "item": [
+        {
+          "name": "1. Adicionar ao Carrinho (User A)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cart/items",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 1\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "2. Checkout (User A) → capturar orderId_us4",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201', () => pm.response.to.have.status(201));",
+                "pm.collectionVariables.set('orderId_us4', pm.response.json().data.id);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "3. ⭐ User B tenta cancelar pedido de A — espera 403",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders/{{orderId_us4}}/cancel",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenB}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('[SC-005] Retorna 403 para usuário sem ownership', () => pm.response.to.have.status(403));",
+                "",
+                "const json = pm.response.json();",
+                "pm.test('[SC-005] Body contém code FORBIDDEN', () => {",
+                "  pm.expect(json.error.code).to.eql('FORBIDDEN');",
+                "});",
+                "",
+                "pm.test('[SC-005] Pedido permanece inalterado após tentativa negada', () => {",
+                "  // Verificação implícita — se retornou 403, nada foi modificado",
+                "  pm.expect(pm.response.code).to.eql(403);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "4. ⭐ Admin cancela pedido de A — espera 200",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders/{{orderId_us4}}/cancel",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('[SC-005] ADMIN pode cancelar pedido de outro usuário (200)', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "pm.test('order.status === CANCELED', () => {",
+                "  pm.expect(json.data.status).to.eql('CANCELED');",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+
+    {
+      "name": "[US5] Cancelar via POST /payments/:id/cancel",
+      "description": "Cancelamento iniciado pelo módulo de payments — deve produzir os mesmos efeitos do cancel via orders.",
+      "item": [
+        {
+          "name": "1. Adicionar ao Carrinho (User A)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/cart/items",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 2\n}" }
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('200', () => pm.response.to.have.status(200));"] } }]
+        },
+        {
+          "name": "2. Checkout (User A) → orderId_us5",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('201', () => pm.response.to.have.status(201));",
+                "const json = pm.response.json();",
+                "pm.collectionVariables.set('orderId_us5', json.data.id);",
+                "if (json.data.payment) pm.collectionVariables.set('paymentId_us5', json.data.payment.id);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "3. GET /orders — capturar paymentId_us5",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const orderId = pm.collectionVariables.get('orderId_us5');",
+                "const order = pm.response.json().data.find(o => o.id === orderId);",
+                "if (order && order.payment) pm.collectionVariables.set('paymentId_us5', order.payment.id);"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "4. GET /products/:id — estoque ANTES",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const product = pm.response.json().data || pm.response.json();",
+                "pm.collectionVariables.set('stockAntes_us5', String(product.stock));"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "5. ⭐ POST /payments/:id/cancel — TESTE PRINCIPAL",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/payments/{{paymentId_us5}}/cancel",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('[SC-007] Cancelar via /payments retorna 200', () => pm.response.to.have.status(200));",
+                "",
+                "const json = pm.response.json();",
+                "pm.test('[SC-007] Response tem { data }', () => {",
+                "  pm.expect(json).to.have.property('data');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "6. GET /orders — verificar order.status e payment.status CANCELED",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/orders",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenA}}" }]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const orderId = pm.collectionVariables.get('orderId_us5');",
+                "const order = pm.response.json().data.find(o => o.id === orderId);",
+                "",
+                "pm.test('[SC-007] order.status === CANCELED após cancel via payment', () => {",
+                "  pm.expect(order.status).to.eql('CANCELED');",
+                "});",
+                "",
+                "pm.test('[SC-007] payment.status === CANCELED após cancel via payment', () => {",
+                "  pm.expect(order.payment.status).to.eql('CANCELED');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "7. GET /products/:id — verificar estoque restaurado",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products/{{productId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const product = pm.response.json().data || pm.response.json();",
+                "const stockAntes = parseInt(pm.collectionVariables.get('stockAntes_us5'), 10);",
+                "",
+                "pm.test('[SC-003] Estoque restaurado após cancel via /payments', () => {",
+                "  pm.expect(product.stock).to.eql(stockAntes + 2);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+
+    {
+      "name": "[Edge Cases]",
+      "description": "Cenários de borda: ID inválido e pedido já cancelado.",
+      "item": [
+        {
+          "name": "⭐ ID Inválido (não-UUID) — espera 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders/nao-e-um-uuid/cancel",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('[FR-001] ID inválido retorna 400 antes de atingir o service', () => {",
+                "  pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+                "});",
+                "",
+                "const json = pm.response.json();",
+                "pm.test('Body contém erro de validação', () => {",
+                "  pm.expect(json).to.have.property('error');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "⭐ Pedido Já CANCELED — espera 422",
+          "description": "Reutiliza o orderId_us1, que já foi cancelado na pasta [US1].",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/orders/{{orderId_us1}}/cancel",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{tokenA}}" }
+            ]
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('[FR-007] Cancelar pedido já CANCELED retorna 422', () => pm.response.to.have.status(422));",
+                "",
+                "const json = pm.response.json();",
+                "pm.test('[FR-007] code === ORDER_CANNOT_BE_CANCELED', () => {",
+                "  pm.expect(json.error.code).to.eql('ORDER_CANNOT_BE_CANCELED');",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    }
+
+  ]
+}

@@ -8,7 +8,13 @@
     "dev": "nodemon src/server.js",
     "migrate": "npx prisma migrate dev",
     "studio": "npx prisma studio",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/__tests__/**/*.test.js"]
   },
   "keywords": [],
   "author": "",

@@ -1,6 +1,6 @@
 # API E-Commerce Node.js
 
-API RESTful modular para plataforma de e-commerce, construída com **Node.js**, **Express 5**, **Prisma 7** (PostgreSQL) e **Redis 7**.
+API RESTful modular para plataforma de e-commerce, construída com **Node.js**, **Express 5**, **Prisma 7** (PostgreSQL) e **Redis 7**. Todo sistema roda em docker para mantermos consistência de ambientes. 
 
 ## Pré-requisitos
 
@@ -112,62 +112,7 @@ A API estará disponível em `http://localhost:3000`.
 ```
 
 ## Endpoints
-
-### Saúde
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| GET | `/health` | Não | Status da API |
-
-### Autenticação
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| POST | `/api/v1/auth/register` | Não | Criar conta |
-| POST | `/api/v1/auth/login` | Não | Login |
-
-### Usuários
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| GET | `/api/v1/users/:id` | JWT | Ver perfil |
-| PUT | `/api/v1/users/:id` | JWT | Atualizar perfil |
-| DELETE | `/api/v1/users/:id` | JWT | Remover conta |
-
-### Produtos
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| GET | `/api/v1/products` | Não | Listar produtos (paginado, com filtros) |
-| GET | `/api/v1/products/:id` | Não | Ver produto |
-| POST | `/api/v1/products` | ADMIN | Criar produto |
-| PUT | `/api/v1/products/:id` | ADMIN | Atualizar produto |
-| DELETE | `/api/v1/products/:id` | ADMIN | Remover produto |
-
-### Categorias
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| GET | `/api/v1/categories` | Não | Listar categorias |
-| GET | `/api/v1/categories/:id` | Não | Ver categoria |
-| POST | `/api/v1/categories` | ADMIN | Criar categoria |
-| PUT | `/api/v1/categories/:id` | ADMIN | Atualizar categoria |
-| DELETE | `/api/v1/categories/:id` | ADMIN | Remover categoria |
-
-### Carrinho
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| GET | `/api/v1/cart` | JWT | Ver carrinho |
-| POST | `/api/v1/cart/items` | JWT | Adicionar item |
-| DELETE | `/api/v1/cart/items/:itemId` | JWT | Remover item |
-
-### Pedidos
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| GET | `/api/v1/orders` | JWT | Listar meus pedidos |
-| POST | `/api/v1/orders` | JWT | Finalizar compra (checkout) |
-
-### Pagamentos
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| POST | `/api/v1/payments` | JWT | Criar intenção de pagamento |
-| POST | `/api/v1/payments/:id/confirm` | JWT | Confirmar pagamento |
-| POST | `/api/v1/payments/:id/cancel` | JWT | Cancelar pagamento |
+Busque nos arquivo README.md de cada módulo para conhecer seus endpoints
 
 ## Autenticação
 
