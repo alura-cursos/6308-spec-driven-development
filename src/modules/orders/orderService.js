@@ -4,7 +4,45 @@ const productRepository = require('../products/productRepository');
 const AppError = require('../../utils/AppError');
 const logger = require('../../config/logger');
 
+const CANCELABLE_STATUSES = ['PENDING', 'PAID'];
+const ADMIN_SETTABLE_STATUSES = ['PACKING', 'SHIPPED', 'DELIVERED'];
+
 const orderService = {
+    cancelOrder: async (orderId, userId, userRole) => {
+        const order = await orderRepository.findById(orderId);
+
+        if (!order) {
+            throw new AppError('Pedido não encontrado', 404, 'RESOURCE_NOT_FOUND');
+        }
+
+        if (order.userId !== userId && userRole !== 'ADMIN') {
+            throw new AppError('Acesso negado', 403, 'FORBIDDEN');
+        }
+
+        if (!CANCELABLE_STATUSES.includes(order.status)) {
+            throw new AppError('Pedido não pode ser cancelado', 422, 'ORDER_CANNOT_BE_CANCELED');
+        }
+
+        return await orderRepository.cancelOrderTransaction(orderId);
+    },
+
+    advanceStatus: async (orderId, newStatus, userRole) => {
+        if (userRole !== 'ADMIN') {
+            throw new AppError('Acesso negado', 403, 'FORBIDDEN');
+        }
+
+        if (!ADMIN_SETTABLE_STATUSES.includes(newStatus)) {
+            throw new AppError('Status inválido', 422, 'INVALID_PAYLOAD');
+        }
+
+        const order = await orderRepository.findById(orderId);
+        if (!order) {
+            throw new AppError('Pedido não encontrado', 404, 'RESOURCE_NOT_FOUND');
+        }
+
+        return await orderRepository.updateStatus(orderId, newStatus);
+    },
+
     listOrders: async (userId) => {
         return await orderRepository.findManyByUser(userId);
     },

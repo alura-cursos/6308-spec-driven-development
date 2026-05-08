@@ -37,7 +37,11 @@
       "Bash(node node_modules/jest/bin/jest.js --no-coverage --testPathPattern=\"__tests__\")",
       "Bash(npm install *)",
       "Bash(node node_modules/jest/bin/jest.js --no-coverage --testPathPattern=\"__tests__\" --rootDir=\".\")",
-      "Bash(node node_modules/jest/bin/jest.js --no-coverage)"
+      "Bash(node node_modules/jest/bin/jest.js --no-coverage)",
+      "Bash(docker rm *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\ADMINI~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Administrador-Documents-Alura-6308---Spec-Driven-api-eccomerce\\\\6d61691d-3a84-44f9-9498-4bf3e560bced\\\\tasks\\\\bc3af2f1j.output\")",
+      "Bash(Select-Object -Last 10)",
+      "Bash(Start-Sleep -Seconds 5)"
     ]
   }
 }

@@ -1,6 +1,48 @@
 const prisma = require('../../config/database');
 
 const orderRepository = {
+    findById: async (orderId) => {
+        return await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { items: true, payment: true },
+        });
+    },
+
+    cancelOrderTransaction: async (orderId) => {
+        return await prisma.$transaction(async (tx) => {
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                include: { items: true },
+            });
+
+            for (const item of order.items) {
+                await tx.product.update({
+                    where: { id: item.productId },
+                    data: { stock: { increment: item.quantity } },
+                });
+            }
+
+            await tx.payment.update({
+                where: { orderId },
+                data: { status: 'CANCELED' },
+            });
+
+            return await tx.order.update({
+                where: { id: orderId },
+                data: { status: 'CANCELED' },
+                include: { items: true, payment: true },
+            });
+        });
+    },
+
+    updateStatus: async (orderId, status) => {
+        return await prisma.order.update({
+            where: { id: orderId },
+            data: { status },
+            include: { items: true, payment: true },
+        });
+    },
+
     findManyByUser: async (userId) => {
         return await prisma.order.findMany({
             where: { userId },

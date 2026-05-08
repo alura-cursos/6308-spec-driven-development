@@ -1,0 +1,109 @@
+services:
+  postgres_test:
+    image: postgres:15-alpine
+    container_name: api_postgres_test
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: api_ecommerce_test
+    ports:
+      - "5433:5432"
+    networks:
+      - api_test_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d api_ecommerce_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: api_redis_test
+    ports:
+      - "6380:6379"
+    networks:
+      - api_test_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api_test:
+    build: .
+    container_name: api_app_test
+    environment:
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgresql://admin:admin123@postgres_test:5432/api_ecommerce_test
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: test_access_secret_jwt
+      JWT_ACCESS_EXPIRATION: 15m
+      JWT_REFRESH_SECRET: test_refresh_secret_jwt
+      JWT_REFRESH_EXPIRATION: 7d
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      redis_test:
+        condition: service_healthy
+    networks:
+      - api_test_network
+    command: >
+      sh -c "npx prisma generate &&
+             npx prisma db push --accept-data-loss &&
+             node prisma/seed.js &&
+             node src/server.js"
+
+  jest_runner:
+    build: .
+    container_name: api_jest_runner
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://admin:admin123@postgres_test:5432/api_ecommerce_test
+      REDIS_HOST: redis_test
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: test_access_secret_jwt
+      JWT_ACCESS_EXPIRATION: 15m
+      JWT_REFRESH_SECRET: test_refresh_secret_jwt
+      JWT_REFRESH_EXPIRATION: 7d
+    depends_on:
+      postgres_test:
+        condition: service_healthy
+      redis_test:
+        condition: service_healthy
+    networks:
+      - api_test_network
+    command: >
+      sh -c "npx prisma generate &&
+             npx prisma db push --accept-data-loss &&
+             node node_modules/jest/bin/jest.js --no-coverage --forceExit"
+
+  newman_runner:
+    image: postman/newman:alpine
+    container_name: api_newman_runner
+    volumes:
+      - ./docs/specs/postman:/etc/newman
+    networks:
+      - api_test_network
+    depends_on:
+      - api_test
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        echo 'Aguardando API ficar pronta...'
+        until wget -qO- http://api_test:3001/health > /dev/null 2>&1; do
+          echo 'Aguardando...'
+          sleep 3
+        done
+        echo 'API pronta! Executando Newman...'
+        newman run /etc/newman/001-cancelamento-de-pedido.postman_collection.json \
+          --environment /etc/newman/test.postman_environment.json \
+          --reporters cli \
+          --reporter-cli-no-banner
+
+networks:
+  api_test_network:
+    driver: bridge

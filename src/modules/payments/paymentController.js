@@ -25,8 +25,12 @@ const paymentController = {
 
     cancel: async (req, res, next) => {
         try {
-            const result = await paymentService.cancelPayment(req.params.id);
-            res.json({ data: result });
+            const result = await paymentService.cancelPayment(
+                req.params.id,
+                req.user.sub,
+                req.user.role
+            );
+            res.json({ data: result, meta: { timestamp: new Date().toISOString() } });
         } catch (error) {
             next(error);
         }

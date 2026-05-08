@@ -1,7 +1,9 @@
 const paymentRepository = require('./paymentRepository');
-const prisma = require('../../config/database'); // Para atualizar order status cross-module, ideal via event ou service, aqui direto no prisma pra simplificar transaction
+const orderRepository = require('../orders/orderRepository');
 const AppError = require('../../utils/AppError');
 const logger = require('../../config/logger');
+
+const CANCELABLE_STATUSES = ['PENDING', 'PAID'];
 
 const paymentService = {
     createPaymentIntent: async (orderId) => {
@@ -29,16 +31,16 @@ const paymentService = {
             return payment; // Idempotência simples
         }
 
-        // Transação: Update Payment e Order
+        const prisma = require('../../config/database');
         const result = await prisma.$transaction(async (tx) => {
             const updatedPayment = await tx.payment.update({
                 where: { id: paymentId },
-                data: { status: 'PAID' }
+                data: { status: 'PAID' },
             });
 
             await tx.order.update({
                 where: { id: payment.orderId },
-                data: { status: 'PAID' }
+                data: { status: 'PAID' },
             });
 
             return updatedPayment;
@@ -48,27 +50,23 @@ const paymentService = {
         return result;
     },
 
-    cancelPayment: async (paymentId) => {
+    cancelPayment: async (paymentId, userId, userRole) => {
         const payment = await paymentRepository.findById(paymentId);
         if (!payment) {
             throw new AppError('Pagamento não encontrado', 404, 'RESOURCE_NOT_FOUND');
         }
 
-        // Transação: Cancel Payment, Order e Devolver Estoque (opcional, mas recomendado)
-        // Aqui apenas cancela status
-        await prisma.$transaction(async (tx) => {
-            await tx.payment.update({
-                where: { id: paymentId },
-                data: { status: 'CANCELED' }
-            });
+        const order = payment.order;
 
-            await tx.order.update({
-                where: { id: payment.orderId },
-                data: { status: 'CANCELED' }
-            });
-        });
+        if (order.userId !== userId && userRole !== 'ADMIN') {
+            throw new AppError('Acesso negado', 403, 'FORBIDDEN');
+        }
 
-        return { message: 'Pagamento e Pedido cancelados' };
+        if (!CANCELABLE_STATUSES.includes(order.status)) {
+            throw new AppError('Pedido não pode ser cancelado', 422, 'ORDER_CANNOT_BE_CANCELED');
+        }
+
+        return await orderRepository.cancelOrderTransaction(order.id);
     }
 };
 
