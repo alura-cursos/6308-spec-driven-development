@@ -9,23 +9,46 @@ API RESTful modular construída com Node.js, Express, Prisma (PostgreSQL) e Redi
 
 ## Configuração
 
-1. **Instalar Dependências**
-   ```bash
-   npm install
-   ```
+### 1. Instalar Dependências
 
-2. **Configurar Ambiente**
-   O arquivo `.env` já foi criado com defaults. Se necessário, ajuste as credenciais do banco.
+```bash
+npm install
+```
 
-3. **Iniciar Infraestrutura (Banco e Redis)**
-   ```bash
-   docker compose up -d
-   ```
+### 2. Configurar Variáveis de Ambiente
 
-4. **Rodar Migrations do Banco**
-   ```bash
-   npm run migrate
-   ```
+Crie um arquivo `.env` na raiz do projeto:
+
+```env
+# Database
+DATABASE_URL=postgresql://admin:admin123@localhost:5432/api_ecommerce
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# JWT
+JWT_ACCESS_SECRET=seu-secret-super-seguro-min-32-chars
+JWT_ACCESS_EXPIRATION=15m
+JWT_REFRESH_SECRET=seu-secret-refresh-super-seguro
+JWT_REFRESH_EXPIRATION=7d
+
+# Application
+NODE_ENV=development
+PORT=3000
+```
+
+### 3. Subir Infraestrutura (PostgreSQL + Redis)
+
+```bash
+docker compose up -d
+```
+
+### 4. Aplicar Migrações do Banco
+
+```bash
+npm run migrate
+```
 
 ## Rodando a API
 
